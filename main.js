@@ -1,37 +1,53 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const { saveInteraction, getInteractions } = require('./src/utils/stateManager'); // Adjusted the path
+
+
+// first read the environment name 
+// if dev then enable devTools or else disable
 
 function createWindow() {
   const win = new BrowserWindow({
     width: 330,
     height: 630,
     webPreferences: {
-      nodeIntegration: true,  // Allow Node.js integration in the renderer process
-      contextIsolation: false, // Disable context isolation so scripts can run
-      enableRemoteModule: true, // Enable the use of remote module (optional, depending on your app)
-    }
+      nodeIntegration: true,
+      contextIsolation: false,
+      enableRemoteModule: true,
+      // devTools:
+    },
   });
 
-  // Load the React app's index.html after the build
   win.loadFile(path.join(__dirname, 'build', 'index.html'));
+  win.removeMenu();
 
-  // Open DevTools for debugging (optional)
-  win.webContents.openDevTools();
+  win.webContents.on('context-menu', (e) => {
+    e.preventDefault();
+  });
 }
 
-// Run createWindow() when Electron has initialized
+// Handle saving interactions
+ipcMain.on('save-interaction', (event, interaction) => {
+  saveInteraction(interaction);
+});
+
+// Handle retrieving interactions
+ipcMain.handle('get-interactions', (event) => {
+  return getInteractions();
+});
+
+
 app.whenReady().then(createWindow);
 
-// Handle closing of all windows (important for macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// Handle reopening of the app (important for macOS)
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
+
