@@ -45,7 +45,7 @@ Ensure you have the following installed:
 
 <ol>
   <li><strong>Clone the repository:</strong>
-    <pre><code>git clone https://github.com/your-username/gemini-chatbot.git</code></pre>
+    <pre><code>git clone https://github.com/suraj0-11/gemini-chatbot.git</code></pre>
   </li>
   
   <li><strong>Navigate to the project directory:</strong>
@@ -61,8 +61,8 @@ Ensure you have the following installed:
     <pre><code>REACT_APP_GOOGLE_API_KEY=your-google-api-key</code></pre>
   </li>
   
-  <li><strong>Run the application:</strong>
-    <pre><code>npm run dev</code></pre>
+  <li><strong>Build the application:</strong>
+    <pre><code>npm run build</code></pre>
   </li>
   
   <li><strong>Package the Electron app:</strong>
