@@ -1,0 +1,191 @@
+name: Universal AI Code Review
+
+on:
+  push:
+    branches: [ main, master, development ]
+  pull_request:
+    branches: [ main, master, development ]
+
+jobs:
+  ai-code-review:
+    runs-on: ubuntu-latest
+    
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      REVIEW_CATEGORIES: |
+        # Advanced Code Analysis Pre-Prompt
+        ## Primary Analysis Parameters
+        Perform a comprehensive static and dynamic code analysis with the following focus areas:
+        ### 1. Metric Collection
+        - Calculate cyclomatic complexity for each function
+        - Measure Halstead complexity metrics
+        - Generate maintainability index
+        - Count effective lines of code (eLOC)
+        - Assess comment-to-code ratio
+        - Identify duplicate code segments (with >3 lines)
+        ### 2. Variable and Resource Analysis
+        - Track variable lifecycle and usage patterns
+        - Identify unused or redundant variables
+        - Detect memory leaks and resource management issues
+        - Analyze scope contamination
+        - Check for proper initialization
+        ### 3. Control Flow Analysis
+        - Map execution paths
+        - Identify unreachable code
+        - Detect infinite loops
+        - Analyze exception handling paths
+        - Evaluate branching complexity
+        ### 4. Data Flow Analysis
+        - Track data transformations
+        - Identify potential null references
+        - Check for uninitialized variables
+        - Analyze type consistency
+        - Evaluate thread safety
+        ### 5. Security Assessment
+        - Check for common vulnerability patterns
+        - Analyze input validation
+        - Evaluate output encoding
+        - Assess authentication mechanisms
+        - Review authorization controls
+        ### 6. Performance Profiling
+        - Calculate algorithmic complexity
+        - Identify performance bottlenecks
+        - Analyze memory usage patterns
+        - Evaluate I/O operations
+        - Check resource utilization
+        ### 7. Code Style and Standards
+        - Verify naming conventions
+        - Check formatting consistency
+        - Assess documentation quality
+        - Evaluate code organization
+        - Review error handling practices
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install Required Dependencies
+      run: |
+        sudo apt-get install jq -y
+        python -m pip install --upgrade pip
+        pip install requests
+    
+    - name: Create Review Script
+      run: |
+        cat > review_code.py << 'EOF'
+        import os
+        import requests
+        import json
+        import traceback
+
+        GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        API_KEY = os.getenv('GEMINI_API_KEY')
+        HEADERS = {'Content-Type': 'application/json'}
+        
+        def review_code(file_content, filename):
+            prompt = f"""Please review the following code from {filename}. 
+            
+            {os.getenv('REVIEW_CATEGORIES')}
+            
+            Here's the code to review:
+            
+            {file_content}
+            """
+            
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}]
+            }
+            
+            # Send request to Gemini API
+            response = requests.post(
+                f"{GEMINI_API_URL}?key={API_KEY}", 
+                headers=HEADERS, 
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                review_text = response.json()['candidates'][0]['content']['parts'][0]['text']
+                
+                # Ensure the file name is always included in the review result
+                if filename not in review_text:
+                    review_text = f"File: {filename}\n\n{review_text}"
+                
+                return review_text
+            else:
+                raise Exception(f"Failed to get review from Gemini API: {response.text}")
+        
+        def review_file(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    code = file.read()
+                    review = review_code(code, file_path)
+                    return review
+            except Exception as e:
+                print(f"Error reviewing {file_path}: {str(e)}")
+                return None
+
+        def generate_report(reviews):
+            report = "# 🤖 AI Code Review Report\n\n"
+            report += "### Here are the detailed reviews for your code:\n\n"
+            
+            if not reviews:
+                report += "No files were reviewed.\n"
+                return report
+                
+            report += f"## Overview\n\n**Files Reviewed:** {len(reviews)}\n\n"
+            
+            for review in reviews:
+                if review:
+                    report += f"## Review\n\n{review}\n\n"
+                    report += "---\n\n"
+            
+            return report
+
+        reviews = []
+        for root, _, files in os.walk('.'):
+            for file in files:
+                full_path = os.path.join(root, file)
+                
+                # Filter out non-source files
+                if not any(full_path.endswith(ext) for ext in ['.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.cpp', '.c', '.go', '.rs', '.php', '.html', '.css']):
+                    continue
+                
+                # Exclude unwanted directories
+                if any(exclude in full_path for exclude in ['node_modules', 'dist', 'build', 'coverage', '.git', '__pycache__']):
+                    continue
+                
+                print(f"Reviewing {full_path}...")
+                review = review_file(full_path)
+                if review:
+                    reviews.append(review)
+        
+        report = generate_report(reviews)
+        with open('code-reviews/review_report.md', 'w', encoding='utf-8') as f:
+            f.write(report)
+        
+        print("Review completed. Report generated at code-reviews/review_report.md")
+        EOF
+    
+    - name: Run Code Review
+      run: |
+        mkdir -p code-reviews
+        python3 review_code.py
+    
+    - name: Add Review Results to README
+      run: |
+        # Append the review report to the README file
+        cat code-reviews/review_report.md >> README.md
+        echo "Review results added to README.md"
+    
+    - name: Commit Review Results
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add README.md || true
+        git commit -m "Add AI Code Review Results to README [skip ci]" || true
+        git push || true
